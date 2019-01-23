@@ -13,10 +13,10 @@ from collections import deque
 GAME = 'bird' # the name of the game being played for log files
 ACTIONS = 2 # number of valid actions
 GAMMA = 0.99 # decay rate of past observations
-OBSERVE = 100000. # timesteps to observe before training
-EXPLORE = 2000000. # frames over which to anneal epsilon
+OBSERVE = 10000. # timesteps to observe before training
+EXPLORE = 3000000. # frames over which to anneal epsilon
 FINAL_EPSILON = 0.0001 # final value of epsilon
-INITIAL_EPSILON = 0.0001 # starting value of epsilon
+INITIAL_EPSILON = 0.1 # starting value of epsilon
 REPLAY_MEMORY = 50000 # number of previous transitions to remember
 BATCH = 32 # size of minibatch
 FRAME_PER_ACTION = 1
@@ -103,13 +103,13 @@ def trainNetwork(s, readout, h_fc1, sess):
 
     # saving and loading networks
     saver = tf.train.Saver()
-    sess.run(tf.initialize_all_variables())
+    sess.run(tf.global_variables_initializer())
     checkpoint = tf.train.get_checkpoint_state("saved_networks")
-    if checkpoint and checkpoint.model_checkpoint_path:
-        saver.restore(sess, checkpoint.model_checkpoint_path)
-        print("Successfully loaded:", checkpoint.model_checkpoint_path)
-    else:
-        print("Could not find old network weights")
+    # if checkpoint and checkpoint.model_checkpoint_path:
+    #     saver.restore(sess, checkpoint.model_checkpoint_path)
+    #     print("Successfully loaded:", checkpoint.model_checkpoint_path)
+    # else:
+    #     print("Could not find old network weights")
 
     # start training
     epsilon = INITIAL_EPSILON
@@ -150,7 +150,7 @@ def trainNetwork(s, readout, h_fc1, sess):
         # only train if done observing
         if t > OBSERVE:
             # sample a minibatch to train on
-            minibatch = random.sample(D, BATCH)
+            minibatch = random.sample(list(D), BATCH)
 
             # get the batch variables
             s_j_batch = [d[0] for d in minibatch]
@@ -212,4 +212,8 @@ def main():
     playGame()
 
 if __name__ == "__main__":
+    import os
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
     main()
