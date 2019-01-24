@@ -2,4 +2,6 @@
 *.pyc
 .idea
 saved_networks
+saved_networks_no_fps_clock
+saved_networks_*
 saved_networks/checkpoint
