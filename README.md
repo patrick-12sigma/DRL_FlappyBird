@@ -5,6 +5,10 @@
 7 mins version: [DQN for flappy bird](https://www.youtube.com/watch?v=THhUXIhjkCM)
 
 ## Overview
+This repo is heavily based on [this repo](https://github.com/yenchenlin/DeepLearningFlappyBird), with the following improvements:
+- Unify the entry point for training and deployment with  the command line arg `task=train|deploy`.
+- Add a target network to stablize and speed up training. (WIP)
+
 This project follows the description of the Deep Q Learning algorithm described in Playing Atari with Deep Reinforcement Learning [2] and shows that this learning algorithm can be further generalized to the notorious Flappy Bird.
 
 ## Installation Dependencies:
@@ -80,24 +84,6 @@ Note that unlike [1], which initialize ϵ = 1, I linearly anneal ϵ from 0.1 to 
 However, in other games, initialize ϵ to 1 is more reasonable.
 
 During training time, at each time step, the network samples minibatches of size 32 from the replay memory to train on, and performs a gradient step on the loss function described above using the Adam optimization algorithm with a learning rate of 0.000001. After annealing finishes, the network continues to train indefinitely, with ϵ fixed at 0.001.
-
-## FAQ
-
-#### Checkpoint not found
-Change [first line of `saved_networks/checkpoint`](https://github.com/yenchenlin1994/DeepLearningFlappyBird/blob/master/saved_networks/checkpoint#L1) to 
-
-`model_checkpoint_path: "saved_networks/bird-dqn-2920000"`
-
-#### How to reproduce?
-1. Comment out [these lines](https://github.com/yenchenlin1994/DeepLearningFlappyBird/blob/master/deep_q_network.py#L108-L112)
-
-2. Modify `deep_q_network.py`'s parameter as follow:
-```python
-OBSERVE = 10000
-EXPLORE = 3000000
-FINAL_EPSILON = 0.0001
-INITIAL_EPSILON = 0.1
-```
 
 ## References
 
