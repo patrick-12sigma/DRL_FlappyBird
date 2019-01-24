@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 from __future__ import print_function
-
+import argparse
+import os
 import tensorflow as tf
 import cv2
 import sys
@@ -10,16 +11,6 @@ import random
 import numpy as np
 from collections import deque
 
-GAME = 'bird' # the name of the game being played for log files
-ACTIONS = 2 # number of valid actions
-GAMMA = 0.99 # decay rate of past observations
-OBSERVE = 10000. # timesteps to observe before training
-EXPLORE = 3000000. # frames over which to anneal epsilon
-FINAL_EPSILON = 0.0001 # final value of epsilon
-INITIAL_EPSILON = 0.1 # starting value of epsilon
-REPLAY_MEMORY = 50000 # number of previous transitions to remember
-BATCH = 32 # size of minibatch
-FRAME_PER_ACTION = 1
 
 def weight_variable(shape):
     initial = tf.truncated_normal(shape, stddev = 0.01)
@@ -75,7 +66,8 @@ def createNetwork():
 
     return s, readout, h_fc1
 
-def trainNetwork(s, readout, h_fc1, sess):
+
+def trainNetwork(s, readout, h_fc1, sess, game_level='hard', speedup_level=0, save_dir=None):
     # define the cost function
     a = tf.placeholder("float", [None, ACTIONS])
     y = tf.placeholder("float", [None])
@@ -84,7 +76,8 @@ def trainNetwork(s, readout, h_fc1, sess):
     train_step = tf.train.AdamOptimizer(1e-6).minimize(cost)
 
     # open up a game state to communicate with emulator
-    game_state = game.GameState()
+
+    game_state = game.GameState(game_level=game_level, speedup_level=speedup_level)
 
     # store the previous observations in replay memory
     D = deque()
@@ -104,12 +97,12 @@ def trainNetwork(s, readout, h_fc1, sess):
     # saving and loading networks
     saver = tf.train.Saver()
     sess.run(tf.global_variables_initializer())
-    checkpoint = tf.train.get_checkpoint_state("saved_networks")
-    # if checkpoint and checkpoint.model_checkpoint_path:
-    #     saver.restore(sess, checkpoint.model_checkpoint_path)
-    #     print("Successfully loaded:", checkpoint.model_checkpoint_path)
-    # else:
-    #     print("Could not find old network weights")
+    checkpoint = tf.train.get_checkpoint_state(save_dir)
+    if checkpoint and checkpoint.model_checkpoint_path:
+        saver.restore(sess, checkpoint.model_checkpoint_path)
+        print("Successfully loaded:", checkpoint.model_checkpoint_path)
+    else:
+        print("Could not find old network weights")
 
     # start training
     epsilon = INITIAL_EPSILON
@@ -136,6 +129,8 @@ def trainNetwork(s, readout, h_fc1, sess):
 
         # run the selected action and observe next state and reward
         x_t1_colored, r_t, terminal = game_state.frame_step(a_t)
+        if r_t == 1:
+            print("*******************************************************************************************SCORE!!****************")
         x_t1 = cv2.cvtColor(cv2.resize(x_t1_colored, (80, 80)), cv2.COLOR_BGR2GRAY)
         ret, x_t1 = cv2.threshold(x_t1, 1, 255, cv2.THRESH_BINARY)
         x_t1 = np.reshape(x_t1, (80, 80, 1))
@@ -181,7 +176,7 @@ def trainNetwork(s, readout, h_fc1, sess):
 
         # save progress every 10000 iterations
         if t % 10000 == 0:
-            saver.save(sess, 'saved_networks/' + GAME + '-dqn', global_step = t)
+            saver.save(sess, save_dir + '/' + GAME + '-dqn', global_step = t)
 
         # print info
         state = ""
@@ -203,17 +198,45 @@ def trainNetwork(s, readout, h_fc1, sess):
             cv2.imwrite("logs_tetris/frame" + str(t) + ".png", x_t1)
         '''
 
-def playGame():
-    sess = tf.InteractiveSession()
-    s, readout, h_fc1 = createNetwork()
-    trainNetwork(s, readout, h_fc1, sess)
-
-def main():
-    playGame()
 
 if __name__ == "__main__":
-    import os
-    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--task', default='deploy', type=str, help='train or deploy')
+    parser.add_argument('--gpu', default='1', type=str, metavar='N', help='use gpu')
+    args = parser.parse_args()
+    if args.task == 'train':
+        # global variables
+        GAME = 'bird'  # the name of the game being played for log files
+        ACTIONS = 2  # number of valid actions
+        GAMMA = 0.99  # decay rate of past observations
+        OBSERVE = 10000.  # timesteps to observe before training
+        EXPLORE = 3000000.  # frames over which to anneal epsilon
+        FINAL_EPSILON = 0.0001  # final value of epsilon
+        INITIAL_EPSILON = 0.1  # starting value of epsilon
+        REPLAY_MEMORY = 50000  # number of previous transitions to remember
+        BATCH = 32  # size of minibatch
+        FRAME_PER_ACTION = 1
+        speedup_level = 0
+    elif args.task == 'deploy':
+        GAME = 'bird'  # the name of the game being played for log files
+        ACTIONS = 2  # number of valid actions
+        GAMMA = 0.99  # decay rate of past observations
+        OBSERVE = 100000.  # timesteps to observe before training
+        EXPLORE = 3000000.  # frames over which to anneal epsilon
+        FINAL_EPSILON = 0.0001  # final value of epsilon
+        INITIAL_EPSILON = 0.0001  # starting value of epsilon
+        REPLAY_MEMORY = 50000  # number of previous transitions to remember
+        BATCH = 32  # size of minibatch
+        FRAME_PER_ACTION = 1
+        speedup_level = 1
+    else:
+        raise ValueError('task can only be train or deploy')
 
-    main()
+    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
+
+    save_dir = 'saved_networks_no_fps_clock'
+    game_level = 'hard'
+    sess = tf.InteractiveSession()
+    s, readout, h_fc1 = createNetwork()
+    trainNetwork(s, readout, h_fc1, sess, save_dir=save_dir, game_level=game_level, speedup_level=speedup_level)

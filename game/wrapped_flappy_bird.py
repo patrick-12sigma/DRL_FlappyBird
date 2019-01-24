@@ -10,7 +10,7 @@ from itertools import cycle
 FPS = 30
 SCREENWIDTH  = 288
 SCREENHEIGHT = 512
-SPEEDUP_LEVEL = 1 # 0: no speed up
+# SPEEDUP_LEVEL = 1 # 0: no speed up
                   # 1: no FPS lock, with frame update
                   # 2: no FPS lock, no frame update
 
@@ -24,7 +24,7 @@ IMAGES, SOUNDS, HITMASKS = flappy_bird_utils.load()
 PIPEGAPSIZE is set to 100 as hard mode, 150 as medium and 200 as easy
 https://github.com/yenchenlin/DeepLearningFlappyBird/issues/57
 '''
-PIPEGAPSIZE = 100 # gap between upper and lower part of pipe
+# PIPEGAPSIZE = 100 # gap between upper and lower part of pipe
 BASEY = SCREENHEIGHT * 0.79
 
 PLAYER_WIDTH = IMAGES['player'][0].get_width()
@@ -37,15 +37,16 @@ PLAYER_INDEX_GEN = cycle([0, 1, 2, 1])
 
 
 class GameState:
-    def __init__(self):
+    def __init__(self, speedup_level=0, game_level='hard'):
         self.score = self.playerIndex = self.loopIter = 0
         self.playerx = int(SCREENWIDTH * 0.2)
         self.playery = int((SCREENHEIGHT - PLAYER_HEIGHT) / 2)
         self.basex = 0
         self.baseShift = IMAGES['base'].get_width() - BACKGROUND_WIDTH
+        self.game_level = game_level
 
-        newPipe1 = getRandomPipe()
-        newPipe2 = getRandomPipe()
+        newPipe1 = getRandomPipe(self.game_level)
+        newPipe2 = getRandomPipe(self.game_level)
         self.upperPipes = [
             {'x': SCREENWIDTH, 'y': newPipe1[0]['y']},
             {'x': SCREENWIDTH + (SCREENWIDTH / 2), 'y': newPipe2[0]['y']},
@@ -63,6 +64,7 @@ class GameState:
         self.playerAccY    =   1   # players downward accleration
         self.playerFlapAcc =  -9   # players speed on flapping
         self.playerFlapped = False # True when player flaps
+        self.speedup_level = speedup_level
 
     def frame_step(self, input_actions):
         pygame.event.pump()
@@ -112,7 +114,7 @@ class GameState:
 
         # add new pipe when first pipe is about to touch left of screen
         if 0 < self.upperPipes[0]['x'] < 5:
-            newPipe = getRandomPipe()
+            newPipe = getRandomPipe(self.game_level)
             self.upperPipes.append(newPipe[0])
             self.lowerPipes.append(newPipe[1])
 
@@ -129,7 +131,8 @@ class GameState:
             #SOUNDS['hit'].play()
             #SOUNDS['die'].play()
             terminal = True
-            self.__init__()
+            # init with the old parameters
+            self.__init__(speedup_level=self.speedup_level, game_level=self.game_level)
             reward = -1
 
         # draw sprites
@@ -146,15 +149,37 @@ class GameState:
                     (self.playerx, self.playery))
 
         image_data = pygame.surfarray.array3d(pygame.display.get_surface())
-        if SPEEDUP_LEVEL < 2:
+        if self.speedup_level < 2:
             pygame.display.update()
-            if SPEEDUP_LEVEL < 1:
+            if self.speedup_level < 1:
                 FPSCLOCK.tick(FPS)
         #print self.upperPipes[0]['y'] + PIPE_HEIGHT - int(BASEY * 0.2)
         return image_data, reward, terminal
 
-def getRandomPipe():
+
+def getPipeGapSize(game_level='hard'):
+    '''
+    PIPEGAPSIZE is set to 100 as hard mode, 150 as medium and 200 as easy
+    https://github.com/yenchenlin/DeepLearningFlappyBird/issues/57
+    '''
+    PIPEGAPSIZE = 100  # gap between upper and lower part of pipe
+
+    if game_level.lower() == 'hard':
+        pipe_gap_size = 100
+    elif game_level.lower() == 'medium':
+        pipe_gap_size = 150
+    elif game_level.lower() == 'easy':
+        pipe_gap_size = 200
+    else:
+        raise ValueError('Game level can only be easy, medium or hard')
+    return pipe_gap_size
+
+
+def getRandomPipe(game_level='hard'):
     """returns a randomly generated pipe"""
+    # get pipe_gap_size based on game level
+    pipe_gap_size = getPipeGapSize(game_level=game_level)
+
     # y of gap between upper and lower pipe
     gapYs = [20, 30, 40, 50, 60, 70, 80, 90]
     index = random.randint(0, len(gapYs)-1)
@@ -165,7 +190,7 @@ def getRandomPipe():
 
     return [
         {'x': pipeX, 'y': gapY - PIPE_HEIGHT},  # upper pipe
-        {'x': pipeX, 'y': gapY + PIPEGAPSIZE},  # lower pipe
+        {'x': pipeX, 'y': gapY + pipe_gap_size},  # lower pipe
     ]
 
 
