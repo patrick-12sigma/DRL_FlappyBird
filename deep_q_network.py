@@ -12,79 +12,102 @@ import numpy as np
 from collections import deque
 
 
-def weight_variable(shape):
-    initial = tf.truncated_normal(shape, stddev = 0.01)
-    return tf.Variable(initial)
+class Estimator(object):
+    """This is the deep CNN model for both the q-estimator and the target q-estimator"""
+    def __init__(self):
+        self.build_model()
 
-def bias_variable(shape):
-    initial = tf.constant(0.01, shape = shape)
-    return tf.Variable(initial)
+    @staticmethod
+    def weight_variable(shape):
+        initial = tf.truncated_normal(shape, stddev = 0.01)
+        return tf.Variable(initial)
 
-def conv2d(x, W, stride):
-    return tf.nn.conv2d(x, W, strides = [1, stride, stride, 1], padding = "SAME")
+    @staticmethod
+    def bias_variable(shape):
+        initial = tf.constant(0.01, shape = shape)
+        return tf.Variable(initial)
 
-def max_pool_2x2(x):
-    return tf.nn.max_pool(x, ksize = [1, 2, 2, 1], strides = [1, 2, 2, 1], padding = "SAME")
+    @staticmethod
+    def conv2d(x, W, stride):
+        return tf.nn.conv2d(x, W, strides = [1, stride, stride, 1], padding = "SAME")
 
-def createNetwork():
-    # network weights
-    W_conv1 = weight_variable([8, 8, 4, 32])
-    b_conv1 = bias_variable([32])
+    @staticmethod
+    def max_pool_2x2(x):
+        return tf.nn.max_pool(x, ksize = [1, 2, 2, 1], strides = [1, 2, 2, 1], padding = "SAME")
 
-    W_conv2 = weight_variable([4, 4, 32, 64])
-    b_conv2 = bias_variable([64])
+    def build_model(self):
+        # network weights
+        W_conv1 = self.weight_variable([8, 8, 4, 32])
+        b_conv1 = self.bias_variable([32])
 
-    W_conv3 = weight_variable([3, 3, 64, 64])
-    b_conv3 = bias_variable([64])
+        W_conv2 = self.weight_variable([4, 4, 32, 64])
+        b_conv2 = self.bias_variable([64])
 
-    W_fc1 = weight_variable([1600, 512])
-    b_fc1 = bias_variable([512])
+        W_conv3 = self.weight_variable([3, 3, 64, 64])
+        b_conv3 = self.bias_variable([64])
 
-    W_fc2 = weight_variable([512, ACTIONS])
-    b_fc2 = bias_variable([ACTIONS])
+        W_fc1 = self.weight_variable([1600, 512])
+        b_fc1 = self.bias_variable([512])
 
-    # input layer
-    s = tf.placeholder("float", [None, 80, 80, 4])
+        W_fc2 = self.weight_variable([512, ACTIONS])
+        b_fc2 = self.bias_variable([ACTIONS])
 
-    # hidden layers
-    h_conv1 = tf.nn.relu(conv2d(s, W_conv1, 4) + b_conv1)
-    h_pool1 = max_pool_2x2(h_conv1)
+        # input layer
+        self.s = tf.placeholder("float", [None, 80, 80, 4])
 
-    h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2, 2) + b_conv2)
-    #h_pool2 = max_pool_2x2(h_conv2)
+        # hidden layers
+        h_conv1 = tf.nn.relu(self.conv2d(self.s, W_conv1, 4) + b_conv1)
+        h_pool1 = self.max_pool_2x2(h_conv1)
 
-    h_conv3 = tf.nn.relu(conv2d(h_conv2, W_conv3, 1) + b_conv3)
-    #h_pool3 = max_pool_2x2(h_conv3)
+        h_conv2 = tf.nn.relu(self.conv2d(h_pool1, W_conv2, 2) + b_conv2)
+        #h_pool2 = max_pool_2x2(h_conv2)
 
-    #h_pool3_flat = tf.reshape(h_pool3, [-1, 256])
-    h_conv3_flat = tf.reshape(h_conv3, [-1, 1600])
+        h_conv3 = tf.nn.relu(self.conv2d(h_conv2, W_conv3, 1) + b_conv3)
+        #h_pool3 = max_pool_2x2(h_conv3)
 
-    h_fc1 = tf.nn.relu(tf.matmul(h_conv3_flat, W_fc1) + b_fc1)
+        #h_pool3_flat = tf.reshape(h_pool3, [-1, 256])
+        h_conv3_flat = tf.reshape(h_conv3, [-1, 1600])
 
-    # readout layer
-    readout = tf.matmul(h_fc1, W_fc2) + b_fc2
+        h_fc1 = tf.nn.relu(tf.matmul(h_conv3_flat, W_fc1) + b_fc1)
 
-    return s, readout, h_fc1
+        # readout layer
+        self.output_op = tf.matmul(h_fc1, W_fc2) + b_fc2
+
+        # get loss and train_op
+        self.a = tf.placeholder("float", [None, ACTIONS])
+        self.y = tf.placeholder("float", [None])
+
+        readout_action = tf.reduce_sum(tf.multiply(self.output_op, self.a), reduction_indices=1)
+        cost = tf.reduce_mean(tf.square(self.y - readout_action))
+        self.train_op = tf.train.AdamOptimizer(1e-6).minimize(cost)
+
+    def predict(self, s_t):
+        readout_t = self.output_op.eval(feed_dict={self.s: [s_t]})[0]
+        return readout_t
+
+    def update(self, s_j_batch, a_batch, y_batch):
+        self.train_op.run(feed_dict={
+            self.y: y_batch,
+            self.a: a_batch,
+            self.s: s_j_batch}
+        )
 
 
-def trainNetwork(s, readout, h_fc1, sess, game_level='hard', speedup_level=0, save_dir=None):
-    # define the cost function
-    a = tf.placeholder("float", [None, ACTIONS])
-    y = tf.placeholder("float", [None])
-    readout_action = tf.reduce_sum(tf.multiply(readout, a), reduction_indices=1)
-    cost = tf.reduce_mean(tf.square(y - readout_action))
-    train_step = tf.train.AdamOptimizer(1e-6).minimize(cost)
+def copy_model_parameters(q_estimator, target_q_estimator):
+    # TODO: copy the parameters from q_estimator to target_q_estimator
+    pass
 
+
+def trainNetwork(q_estimator, target_q_estimator, sess, game_level='hard', speedup_level=0, save_dir=None):
     # open up a game state to communicate with emulator
-
     game_state = game.GameState(game_level=game_level, speedup_level=speedup_level)
 
     # store the previous observations in replay memory
     D = deque()
 
-    # printing
-    a_file = open("logs_" + GAME + "/readout.txt", 'w')
-    h_file = open("logs_" + GAME + "/hidden.txt", 'w')
+    # # printing
+    # a_file = open("logs_" + GAME + "/readout.txt", 'w')
+    # h_file = open("logs_" + GAME + "/hidden.txt", 'w')
 
     # get the first state by doing nothing and preprocess the image to 80x80x4
     do_nothing = np.zeros(ACTIONS)
@@ -96,7 +119,6 @@ def trainNetwork(s, readout, h_fc1, sess, game_level='hard', speedup_level=0, sa
 
     # saving and loading networks
     saver = tf.train.Saver()
-    sess.run(tf.global_variables_initializer())
     checkpoint = tf.train.get_checkpoint_state(save_dir)
     if checkpoint and checkpoint.model_checkpoint_path:
         saver.restore(sess, checkpoint.model_checkpoint_path)
@@ -109,7 +131,7 @@ def trainNetwork(s, readout, h_fc1, sess, game_level='hard', speedup_level=0, sa
     t = 0
     while "flappy bird" != "angry bird":
         # choose an action epsilon greedily
-        readout_t = readout.eval(feed_dict={s : [s_t]})[0]
+        readout_t = q_estimator.predict(s_t)
         a_t = np.zeros([ACTIONS])
         action_index = 0
         if t % FRAME_PER_ACTION == 0:
@@ -134,7 +156,6 @@ def trainNetwork(s, readout, h_fc1, sess, game_level='hard', speedup_level=0, sa
         x_t1 = cv2.cvtColor(cv2.resize(x_t1_colored, (80, 80)), cv2.COLOR_BGR2GRAY)
         ret, x_t1 = cv2.threshold(x_t1, 1, 255, cv2.THRESH_BINARY)
         x_t1 = np.reshape(x_t1, (80, 80, 1))
-        #s_t1 = np.append(x_t1, s_t[:,:,1:], axis = 2)
         s_t1 = np.append(x_t1, s_t[:, :, :3], axis=2)
 
         # store the transition in D
@@ -144,6 +165,11 @@ def trainNetwork(s, readout, h_fc1, sess, game_level='hard', speedup_level=0, sa
 
         # only train if done observing
         if t > OBSERVE:
+
+            # TODO: update target_q_estimator
+            if t % UPDATE_TARGET_ESTIMATOR_EVERY == 0:
+                copy_model_parameters(q_estimator, target_q_estimator)
+
             # sample a minibatch to train on
             minibatch = random.sample(list(D), BATCH)
 
@@ -154,7 +180,8 @@ def trainNetwork(s, readout, h_fc1, sess, game_level='hard', speedup_level=0, sa
             s_j1_batch = [d[3] for d in minibatch]
 
             y_batch = []
-            readout_j1_batch = readout.eval(feed_dict = {s : s_j1_batch})
+            # TODO: use target_q_estimator here
+            readout_j1_batch = q_estimator.predict(s_j1_batch)
             for i in range(0, len(minibatch)):
                 terminal = minibatch[i][4]
                 # if terminal, only equals reward
@@ -163,12 +190,8 @@ def trainNetwork(s, readout, h_fc1, sess, game_level='hard', speedup_level=0, sa
                 else:
                     y_batch.append(r_batch[i] + GAMMA * np.max(readout_j1_batch[i]))
 
-            # perform gradient step
-            train_step.run(feed_dict = {
-                y : y_batch,
-                a : a_batch,
-                s : s_j_batch}
-            )
+            # update q estimator
+            q_estimator.update()
 
         # update the old values
         s_t = s_t1
@@ -179,47 +202,48 @@ def trainNetwork(s, readout, h_fc1, sess, game_level='hard', speedup_level=0, sa
             saver.save(sess, save_dir + '/' + GAME + '-dqn', global_step = t)
 
         # print info
-        state = ""
         if t <= OBSERVE:
             state = "observe"
         elif t > OBSERVE and t <= OBSERVE + EXPLORE:
             state = "explore"
         else:
             state = "train"
-
         print("TIMESTEP", t, "/ STATE", state, \
             "/ EPSILON", epsilon, "/ ACTION", action_index, "/ REWARD", r_t, \
             "/ Q_MAX %e" % np.max(readout_t))
+
         # write info to files
         '''
         if t % 10000 <= 100:
             a_file.write(",".join([str(x) for x in readout_t]) + '\n')
-            h_file.write(",".join([str(x) for x in h_fc1.eval(feed_dict={s:[s_t]})[0]]) + '\n')
+            h_file.write(",".join([str(x) for x in h_fc1.eval(feed_dict={input_op:[s_t]})[0]]) + '\n')
             cv2.imwrite("logs_tetris/frame" + str(t) + ".png", x_t1)
         '''
 
 
 if __name__ == "__main__":
+    # parse command line args
     parser = argparse.ArgumentParser()
     parser.add_argument('--task', default='deploy', type=str, help='train or deploy')
     parser.add_argument('--gpu', default='1', type=str, metavar='N', help='use gpu')
     args = parser.parse_args()
+
+    # set global constants
+    UPDATE_TARGET_ESTIMATOR_EVERY = 10000
+    GAME = 'bird'  # the name of the game being played for log files
+    ACTIONS = 2  # number of valid actions
     if args.task == 'train':
-        # global variables
-        GAME = 'bird'  # the name of the game being played for log files
-        ACTIONS = 2  # number of valid actions
         GAMMA = 0.99  # decay rate of past observations
         OBSERVE = 10000.  # timesteps to observe before training
         EXPLORE = 3000000.  # frames over which to anneal epsilon
         FINAL_EPSILON = 0.0001  # final value of epsilon
         INITIAL_EPSILON = 0.1  # starting value of epsilon
+        INITIAL_EPSILON = 0.0001  # starting value of epsilon
         REPLAY_MEMORY = 50000  # number of previous transitions to remember
         BATCH = 32  # size of minibatch
         FRAME_PER_ACTION = 1
         speedup_level = 0
     elif args.task == 'deploy':
-        GAME = 'bird'  # the name of the game being played for log files
-        ACTIONS = 2  # number of valid actions
         GAMMA = 0.99  # decay rate of past observations
         OBSERVE = 100000.  # timesteps to observe before training
         EXPLORE = 3000000.  # frames over which to anneal epsilon
@@ -232,11 +256,17 @@ if __name__ == "__main__":
     else:
         raise ValueError('task can only be train or deploy')
 
+    # set gpu
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     save_dir = 'saved_networks_no_fps_clock'
     game_level = 'hard'
-    sess = tf.InteractiveSession()
-    s, readout, h_fc1 = createNetwork()
-    trainNetwork(s, readout, h_fc1, sess, save_dir=save_dir, game_level=game_level, speedup_level=speedup_level)
+    q_estimator = Estimator()
+    target_q_estimator = None
+    # target_q_estimator = Estimator()
+
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        trainNetwork(q_estimator, target_q_estimator, sess,
+                     save_dir=save_dir, game_level=game_level, speedup_level=speedup_level)
