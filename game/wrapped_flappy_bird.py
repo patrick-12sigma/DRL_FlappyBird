@@ -10,6 +10,9 @@ from itertools import cycle
 FPS = 30
 SCREENWIDTH  = 288
 SCREENHEIGHT = 512
+SPEEDUP_LEVEL = 1 # 0: no speed up
+                  # 1: no FPS lock, with frame update
+                  # 2: no FPS lock, no frame update
 
 pygame.init()
 FPSCLOCK = pygame.time.Clock()
@@ -17,6 +20,10 @@ SCREEN = pygame.display.set_mode((SCREENWIDTH, SCREENHEIGHT))
 pygame.display.set_caption('Flappy Bird')
 
 IMAGES, SOUNDS, HITMASKS = flappy_bird_utils.load()
+'''
+PIPEGAPSIZE is set to 100 as hard mode, 150 as medium and 200 as easy
+https://github.com/yenchenlin/DeepLearningFlappyBird/issues/57
+'''
 PIPEGAPSIZE = 100 # gap between upper and lower part of pipe
 BASEY = SCREENHEIGHT * 0.79
 
@@ -139,8 +146,10 @@ class GameState:
                     (self.playerx, self.playery))
 
         image_data = pygame.surfarray.array3d(pygame.display.get_surface())
-        pygame.display.update()
-        FPSCLOCK.tick(FPS)
+        if SPEEDUP_LEVEL < 2:
+            pygame.display.update()
+            if SPEEDUP_LEVEL < 1:
+                FPSCLOCK.tick(FPS)
         #print self.upperPipes[0]['y'] + PIPE_HEIGHT - int(BASEY * 0.2)
         return image_data, reward, terminal
 
@@ -172,7 +181,7 @@ def showScore(score):
 
     for digit in scoreDigits:
         SCREEN.blit(IMAGES['numbers'][digit], (Xoffset, SCREENHEIGHT * 0.1))
-        Xoffset += IMAGES['numbers'][digit].get_width()
+
 
 
 def checkCrash(player, upperPipes, lowerPipes):
