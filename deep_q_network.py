@@ -14,8 +14,14 @@ from collections import deque
 
 class Estimator(object):
     """This is the deep CNN model for both the q-estimator and the target q-estimator"""
-    def __init__(self):
-        self.build_model()
+    def __init__(self, scope='estimator', summaries_dir=None):
+        self.summary_writer = None
+        with tf.variable_scope(scope):
+            self.build_model()
+            if summaries_dir:
+                summary_dir = os.path.join(summaries_dir, scope)
+                os.makedirs(summary_dir, exist_ok=True)
+                self.summary_writer = tf.summary.FileWriter(summary_dir)
 
     @staticmethod
     def weight_variable(shape):
@@ -78,19 +84,28 @@ class Estimator(object):
         self.y = tf.placeholder("float", [None])
 
         readout_action = tf.reduce_sum(tf.multiply(self.output_op, self.a), reduction_indices=1)
-        cost = tf.reduce_mean(tf.square(self.y - readout_action))
-        self.train_op = tf.train.AdamOptimizer(1e-6).minimize(cost)
+        self.loss = tf.reduce_mean(tf.square(self.y - readout_action))
+        self.train_op = tf.train.AdamOptimizer(1e-6).minimize(self.loss)
 
-    def predict(self, s_t):
-        readout_t = self.output_op.eval(feed_dict={self.s: [s_t]})[0]
+        self.summaries = tf.summary.merge([
+            tf.summary.scalar('loss', self.loss),
+            tf.summary.scalar('max_q', tf.reduce_max(self.output_op))
+        ])
+
+    def predict(self, sess, s_t):
+        readout_t = sess.run(self.output_op, feed_dict={self.s: s_t})
         return readout_t
 
-    def update(self, s_j_batch, a_batch, y_batch):
-        self.train_op.run(feed_dict={
-            self.y: y_batch,
-            self.a: a_batch,
-            self.s: s_j_batch}
+    def update(self, sess, s_j_batch, a_batch, y_batch):
+        _, summaries, global_step = sess.run(
+            [self.train_op, self.summaries, tf.train.get_global_step()],
+            feed_dict={
+                self.y: y_batch,
+                self.a: a_batch,
+                self.s: s_j_batch}
         )
+        if self.summary_writer:
+            self.summary_writer.add_summary(summaries, global_step)
 
 
 def copy_model_parameters(q_estimator, target_q_estimator):
@@ -98,7 +113,7 @@ def copy_model_parameters(q_estimator, target_q_estimator):
     pass
 
 
-def trainNetwork(q_estimator, target_q_estimator, sess, game_level='hard', speedup_level=0, save_dir=None):
+def trainNetwork(sess, q_estimator, target_q_estimator, game_level='hard', speedup_level=0, save_dir=None):
     # open up a game state to communicate with emulator
     game_state = game.GameState(game_level=game_level, speedup_level=speedup_level)
 
@@ -114,7 +129,7 @@ def trainNetwork(q_estimator, target_q_estimator, sess, game_level='hard', speed
     do_nothing[0] = 1
     x_t, r_0, terminal = game_state.frame_step(do_nothing)
     x_t = cv2.cvtColor(cv2.resize(x_t, (80, 80)), cv2.COLOR_BGR2GRAY)
-    ret, x_t = cv2.threshold(x_t,1,255,cv2.THRESH_BINARY)
+    ret, x_t = cv2.threshold(x_t, 1, 255, cv2.THRESH_BINARY)
     s_t = np.stack((x_t, x_t, x_t, x_t), axis=2)
 
     # saving and loading networks
@@ -129,9 +144,11 @@ def trainNetwork(q_estimator, target_q_estimator, sess, game_level='hard', speed
     # start training
     epsilon = INITIAL_EPSILON
     t = 0
+    episode_reward = 0
+    episode_length = 0
     while "flappy bird" != "angry bird":
         # choose an action epsilon greedily
-        readout_t = q_estimator.predict(s_t)
+        readout_t = q_estimator.predict(sess, [s_t])[0]
         a_t = np.zeros([ACTIONS])
         action_index = 0
         if t % FRAME_PER_ACTION == 0:
@@ -149,8 +166,15 @@ def trainNetwork(q_estimator, target_q_estimator, sess, game_level='hard', speed
         if epsilon > FINAL_EPSILON and t > OBSERVE:
             epsilon -= (INITIAL_EPSILON - FINAL_EPSILON) / EXPLORE
 
+        # write epsilon to tensorboard
+        simple_summary = tf.Summary()
+        simple_summary.value.add(simple_value=epsilon, tag='epsilon')
+        q_estimator.summary_writer.add_summary(simple_summary, t)
+
         # run the selected action and observe next state and reward
         x_t1_colored, r_t, terminal = game_state.frame_step(a_t)
+        episode_reward += r_t
+        episode_length += 1
         if r_t == 1:
             print("*******************************************************************************************SCORE!!****************")
         x_t1 = cv2.cvtColor(cv2.resize(x_t1_colored, (80, 80)), cv2.COLOR_BGR2GRAY)
@@ -162,6 +186,14 @@ def trainNetwork(q_estimator, target_q_estimator, sess, game_level='hard', speed
         D.append((s_t, a_t, r_t, s_t1, terminal))
         if len(D) > REPLAY_MEMORY:
             D.popleft()
+        # episode ends, write summary to tensorboard
+        if terminal:
+            simple_summary = tf.Summary()
+            simple_summary.value.add(simple_value=episode_reward, tag='episode_reward')
+            simple_summary.value.add(simple_value=episode_length, tag='episode_length')
+            q_estimator.summary_writer.add_summary(simple_summary, t)
+            episode_reward = 0
+            episode_length = 0
 
         # only train if done observing
         if t > OBSERVE:
@@ -181,7 +213,7 @@ def trainNetwork(q_estimator, target_q_estimator, sess, game_level='hard', speed
 
             y_batch = []
             # TODO: use target_q_estimator here
-            readout_j1_batch = q_estimator.predict(s_j1_batch)
+            readout_j1_batch = q_estimator.predict(sess, s_j1_batch)
             for i in range(0, len(minibatch)):
                 terminal = minibatch[i][4]
                 # if terminal, only equals reward
@@ -191,7 +223,7 @@ def trainNetwork(q_estimator, target_q_estimator, sess, game_level='hard', speed
                     y_batch.append(r_batch[i] + GAMMA * np.max(readout_j1_batch[i]))
 
             # update q estimator
-            q_estimator.update()
+            q_estimator.update(sess, s_j_batch, a_batch, y_batch)
 
         # update the old values
         s_t = s_t1
@@ -238,11 +270,10 @@ if __name__ == "__main__":
         EXPLORE = 3000000.  # frames over which to anneal epsilon
         FINAL_EPSILON = 0.0001  # final value of epsilon
         INITIAL_EPSILON = 0.1  # starting value of epsilon
-        INITIAL_EPSILON = 0.0001  # starting value of epsilon
         REPLAY_MEMORY = 50000  # number of previous transitions to remember
         BATCH = 32  # size of minibatch
         FRAME_PER_ACTION = 1
-        speedup_level = 0
+        speedup_level = 2
     elif args.task == 'deploy':
         GAMMA = 0.99  # decay rate of past observations
         OBSERVE = 100000.  # timesteps to observe before training
@@ -260,13 +291,16 @@ if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    save_dir = 'saved_networks_no_fps_clock'
+    save_dir = 'saved_networks_no_fps_clock_v2'
+    summaries_dir = './summaries'
     game_level = 'hard'
-    q_estimator = Estimator()
+    q_estimator = Estimator(scope='estimator', summaries_dir=summaries_dir)
     target_q_estimator = None
     # target_q_estimator = Estimator()
 
     with tf.Session() as sess:
+        # Create a glboal step variable
+        global_step = tf.Variable(0, name='global_step', trainable=False)
         sess.run(tf.global_variables_initializer())
-        trainNetwork(q_estimator, target_q_estimator, sess,
+        trainNetwork(sess, q_estimator, target_q_estimator,
                      save_dir=save_dir, game_level=game_level, speedup_level=speedup_level)
