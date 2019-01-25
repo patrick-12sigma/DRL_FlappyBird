@@ -133,7 +133,7 @@ def trainNetwork(sess, q_estimator, target_q_estimator, game_level='hard', speed
     s_t = np.stack((x_t, x_t, x_t, x_t), axis=2)
 
     # saving and loading networks
-    saver = tf.train.Saver()
+    saver = tf.train.Saver(max_to_keep=None) # save all checkpoints
     checkpoint = tf.train.get_checkpoint_state(save_dir)
     if checkpoint and checkpoint.model_checkpoint_path:
         saver.restore(sess, checkpoint.model_checkpoint_path)
@@ -230,7 +230,7 @@ def trainNetwork(sess, q_estimator, target_q_estimator, game_level='hard', speed
         t += 1
 
         # save progress every 10000 iterations
-        if t % 10000 == 0:
+        if t % SAVE_MODEL_EVERY == 0:
             saver.save(sess, save_dir + '/' + GAME + '-dqn', global_step = t)
 
         # print info
@@ -262,6 +262,7 @@ if __name__ == "__main__":
 
     # set global constants
     UPDATE_TARGET_ESTIMATOR_EVERY = 10000
+    SAVE_MODEL_EVERY = 10000
     GAME = 'bird'  # the name of the game being played for log files
     ACTIONS = 2  # number of valid actions
     if args.task == 'train':
@@ -280,6 +281,7 @@ if __name__ == "__main__":
         EXPLORE = 3000000.  # frames over which to anneal epsilon
         FINAL_EPSILON = 0.0001  # final value of epsilon
         INITIAL_EPSILON = 0.0001  # starting value of epsilon
+        # INITIAL_EPSILON = 0.03  # starting value of epsilon
         REPLAY_MEMORY = 50000  # number of previous transitions to remember
         BATCH = 32  # size of minibatch
         FRAME_PER_ACTION = 1
