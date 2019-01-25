@@ -174,9 +174,9 @@ def trainNetwork(sess, q_estimator, target_q_estimator, game_level='hard', speed
         # run the selected action and observe next state and reward
         x_t1_colored, r_t, terminal = game_state.frame_step(a_t)
         episode_reward += r_t
-        episode_length += 1
         if r_t == 1:
-            print("*******************************************************************************************SCORE!!****************")
+            print("*" * 80 + "SCORE!!****************")
+            episode_length += 1
         x_t1 = cv2.cvtColor(cv2.resize(x_t1_colored, (80, 80)), cv2.COLOR_BGR2GRAY)
         ret, x_t1 = cv2.threshold(x_t1, 1, 255, cv2.THRESH_BINARY)
         x_t1 = np.reshape(x_t1, (80, 80, 1))
@@ -192,6 +192,7 @@ def trainNetwork(sess, q_estimator, target_q_estimator, game_level='hard', speed
             simple_summary.value.add(simple_value=episode_reward, tag='episode_reward')
             simple_summary.value.add(simple_value=episode_length, tag='episode_length')
             q_estimator.summary_writer.add_summary(simple_summary, t)
+            print('>' * 100 + 'episode_length {}, episode_reward {}'.format(episode_length, episode_reward))
             episode_reward = 0
             episode_length = 0
 
