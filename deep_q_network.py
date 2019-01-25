@@ -85,7 +85,7 @@ class Estimator(object):
 
         readout_action = tf.reduce_sum(tf.multiply(self.output_op, self.a), reduction_indices=1)
         self.loss = tf.reduce_mean(tf.square(self.y - readout_action))
-        self.train_op = tf.train.AdamOptimizer(1e-6).minimize(self.loss)
+        self.train_op = tf.train.AdamOptimizer(1e-6).minimize(self.loss, global_step=tf.train.get_global_step())
 
         self.summaries = tf.summary.merge([
             tf.summary.scalar('loss', self.loss),
@@ -106,6 +106,7 @@ class Estimator(object):
         )
         if self.summary_writer:
             self.summary_writer.add_summary(summaries, global_step)
+            self.summary_writer.flush()
 
 
 def copy_model_parameters(q_estimator, target_q_estimator):
@@ -192,6 +193,7 @@ def trainNetwork(sess, q_estimator, target_q_estimator, game_level='hard', speed
             simple_summary.value.add(simple_value=episode_reward, tag='episode_reward')
             simple_summary.value.add(simple_value=episode_length, tag='episode_length')
             q_estimator.summary_writer.add_summary(simple_summary, t)
+            q_estimator.summary_writer.flush()
             print('>' * 100 + 'episode_length {}, episode_reward {}'.format(episode_length, episode_reward))
             episode_reward = 0
             episode_length = 0
@@ -294,16 +296,19 @@ if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    save_dir = 'saved_networks_no_fps_clock_v2'
+    save_dir = 'saved_networks_no_fps_clock_v3'
     summaries_dir = './summaries'
     game_level = 'hard'
+    # create a glboal step variable
+    # NB. this should be done before creating the q_estimator!
+    tf.train.create_global_step()
+
+    # create q_estimator and target_q_estimator
     q_estimator = Estimator(scope='estimator', summaries_dir=summaries_dir)
     target_q_estimator = None
     # target_q_estimator = Estimator()
 
     with tf.Session() as sess:
-        # Create a glboal step variable
-        global_step = tf.Variable(0, name='global_step', trainable=False)
         sess.run(tf.global_variables_initializer())
         trainNetwork(sess, q_estimator, target_q_estimator,
                      save_dir=save_dir, game_level=game_level, speedup_level=speedup_level)
