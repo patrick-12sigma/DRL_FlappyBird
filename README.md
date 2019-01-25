@@ -7,12 +7,13 @@
 ## Overview
 This repo is heavily based on [this repo](https://github.com/yenchenlin/DeepLearningFlappyBird), with the following improvements:
 - Unify the entry point for training and deployment with  the command line arg `task=train|deploy`.
+- Write summaries to monitor the change of loss, episode length and episode total reward. 
 - Add a target network to stablize and speed up training. (WIP)
 
 This project follows the description of the Deep Q Learning algorithm described in Playing Atari with Deep Reinforcement Learning [2] and shows that this learning algorithm can be further generalized to the notorious Flappy Bird.
 
 ## Installation Dependencies:
-* Python 2.7 or 3
+* Python 3
 * TensorFlow 0.7
 * pygame
 * OpenCV-Python
