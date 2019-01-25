@@ -1,6 +1,7 @@
 # ignore all pyc files.
 *.pyc
 .idea
+summaries
 saved_networks
 saved_networks_no_fps_clock
 saved_networks_*
