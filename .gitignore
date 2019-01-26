@@ -3,6 +3,7 @@
 *.ipynb
 .ipynb_checkpoints/
 .idea
+experiment
 summaries
 saved_networks
 saved_networks_no_fps_clock
