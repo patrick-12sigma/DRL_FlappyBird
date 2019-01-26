@@ -9,15 +9,24 @@ import numpy as np
 from collections import deque
 
 
+def maybe_make_model_log_dirs(experiment_name=""):
+    experiment_dir = './experiment'
+    model_dir = os.path.join(experiment_dir, experiment_name, 'models')
+    log_dir = os.path.join(experiment_dir, experiment_name, 'logs')
+    os.makedirs(model_dir, exist_ok=True)
+    os.makedirs(log_dir, exist_ok=True)
+    return model_dir, log_dir
+
+
 class Estimator(object):
     """This is the deep CNN model for both the q-estimator and the target q-estimator"""
-    def __init__(self, scope='estimator', summaries_dir=None):
+    def __init__(self, scope='estimator', log_dir=None):
         self.scope = scope
         self.summary_writer = None
         with tf.variable_scope(scope):
             self.build_model()
-            if summaries_dir:
-                summary_dir = os.path.join(summaries_dir, scope)
+            if log_dir:
+                summary_dir = os.path.join(log_dir, scope)
                 os.makedirs(summary_dir, exist_ok=True)
                 self.summary_writer = tf.summary.FileWriter(summary_dir)
 
@@ -150,7 +159,7 @@ def preprocess_state(x_t):
     return x_t
 
 
-def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', show_play=True, FPS=30, save_dir=None,
+def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', show_play=True, FPS=30, model_dir=None,
               fix_target=True):
     """Train
 
@@ -160,7 +169,7 @@ def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', show_pla
         target_q_estimator:
         game_level:
         speedup_level:
-        save_dir:
+        model_dir:
 
     Returns:
 
@@ -180,7 +189,7 @@ def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', show_pla
 
     # save and load networks
     saver = tf.train.Saver(max_to_keep=None) # save all checkpoints
-    checkpoint = tf.train.get_checkpoint_state(save_dir)
+    checkpoint = tf.train.get_checkpoint_state(model_dir)
     if checkpoint and checkpoint.model_checkpoint_path:
         saver.restore(sess, checkpoint.model_checkpoint_path)
         print("Successfully loaded:", checkpoint.model_checkpoint_path)
@@ -282,7 +291,7 @@ def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', show_pla
 
         # save progress every 10000 iterations
         if t % SAVE_MODEL_EVERY == 0:
-            saver.save(sess, save_dir + '/' + GAME + '-dqn', global_step = t)
+            saver.save(sess, model_dir + '/' + GAME + '-dqn', global_step = t)
 
         # print info
         print("TIMESTEP {} / EPSILON {} / ACTION {} / REWARD {} Q_MAX {}".format(
@@ -297,6 +306,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # set global constants
+    game_level = 'hard'
     UPDATE_TARGET_ESTIMATOR_EVERY = 10000
     SAVE_MODEL_EVERY = 10000
     REPLAY_MEMORY = 50000  # number of previous transitions to remember
@@ -329,20 +339,18 @@ if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    save_dir = 'saved_networks_fixed_target'
-    summaries_dir = './summaries'
-    game_level = 'hard'
+    fix_target = False
+    experiment_name = 'no_fixed_target'
+    model_dir, log_dir = maybe_make_model_log_dirs(experiment_name=experiment_name)
 
-    fix_target = True
     # create a glboal step variable
     # NB. this should be done before creating the q_estimator!
     tf.train.create_global_step()
 
     # create q_estimator and target_q_estimator
-    q_estimator = Estimator(scope='estimator', summaries_dir=summaries_dir)
-    target_q_estimator = Estimator(scope='target_estimator', summaries_dir=summaries_dir)
-
+    q_estimator = Estimator(scope='estimator', log_dir=log_dir)
+    target_q_estimator = Estimator(scope='target_estimator', log_dir=log_dir)
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         train_dqn(sess, q_estimator, target_q_estimator,
-                  save_dir=save_dir, game_level=game_level, show_play=show_play, FPS=FPS, fix_target=fix_target)
+                  model_dir=model_dir, game_level=game_level, show_play=show_play, FPS=FPS, fix_target=fix_target)
