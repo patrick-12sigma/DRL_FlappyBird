@@ -7,12 +7,8 @@ import pygame.surfarray as surfarray
 from pygame.locals import *
 from itertools import cycle
 
-FPS = 30
 SCREENWIDTH  = 288
 SCREENHEIGHT = 512
-# SPEEDUP_LEVEL = 1 # 0: no speed up
-                  # 1: no FPS lock, with frame update
-                  # 2: no FPS lock, no frame update
 
 pygame.init()
 FPSCLOCK = pygame.time.Clock()
@@ -37,7 +33,7 @@ PLAYER_INDEX_GEN = cycle([0, 1, 2, 1])
 
 
 class GameState:
-    def __init__(self, speedup_level=0, game_level='hard'):
+    def __init__(self, show_play=True, FPS=30, game_level='hard'):
         self.score = self.playerIndex = self.loopIter = 0
         self.playerx = int(SCREENWIDTH * 0.2)
         self.playery = int((SCREENHEIGHT - PLAYER_HEIGHT) / 2)
@@ -64,7 +60,8 @@ class GameState:
         self.playerAccY    =   1   # players downward accleration
         self.playerFlapAcc =  -9   # players speed on flapping
         self.playerFlapped = False # True when player flaps
-        self.speedup_level = speedup_level
+        self.show_play = show_play
+        self.FPS = FPS
 
     def frame_step(self, input_actions):
         pygame.event.pump()
@@ -132,7 +129,7 @@ class GameState:
             #SOUNDS['die'].play()
             terminal = True
             # init with the old parameters
-            self.__init__(speedup_level=self.speedup_level, game_level=self.game_level)
+            self.__init__(FPS=self.FPS, show_play=self.show_play, game_level=self.game_level)
             reward = -1
 
         # draw sprites
@@ -149,10 +146,10 @@ class GameState:
                     (self.playerx, self.playery))
 
         image_data = pygame.surfarray.array3d(pygame.display.get_surface())
-        if self.speedup_level < 2:
+        if self.show_play:
             pygame.display.update()
-            if self.speedup_level < 1:
-                FPSCLOCK.tick(FPS)
+        if self.FPS > 0:
+            FPSCLOCK.tick(self.FPS)
         #print self.upperPipes[0]['y'] + PIPE_HEIGHT - int(BASEY * 0.2)
         return image_data, reward, terminal
 

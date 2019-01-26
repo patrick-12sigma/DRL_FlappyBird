@@ -150,7 +150,8 @@ def preprocess_state(x_t):
     return x_t
 
 
-def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', speedup_level=0, save_dir=None):
+def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', show_play=True, FPS=30, save_dir=None,
+              fix_target=True):
     """Train
 
     Args:
@@ -165,8 +166,7 @@ def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', speedup_
 
     """
     # open up a game state to communicate with emulator
-    game_state = game.GameState(game_level=game_level, speedup_level=speedup_level)
-    copy_model_parameters(sess, q_estimator, target_q_estimator)
+    game_state = game.GameState(game_level=game_level, show_play=show_play, FPS=FPS)
 
     # store the previous observations in replay memory
     replay_memory = deque(maxlen=REPLAY_MEMORY)
@@ -247,7 +247,7 @@ def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', speedup_
         # train q_estimator
         if t > OBSERVE:
             # update target_q_estimator periodically
-            if t % UPDATE_TARGET_ESTIMATOR_EVERY == 0:
+            if t % UPDATE_TARGET_ESTIMATOR_EVERY == 0 and fix_target:
                 copy_model_parameters(sess, q_estimator, target_q_estimator)
 
             # sample a minibatch to train on
@@ -261,7 +261,10 @@ def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', speedup_
             # s_j1_batch = [d[3] for d in minibatch]
 
             y_batch = []
-            q_values_j1_batch = target_q_estimator.predict(sess, s_j1_batch)
+            if fix_target:
+                q_values_j1_batch = target_q_estimator.predict(sess, s_j1_batch)
+            else:
+                q_values_j1_batch = q_estimator.predict(sess, s_j1_batch)
             for i in range(0, len(minibatch)):
                 done = minibatch[i][4]
                 # if terminal is done, only equals reward
@@ -308,14 +311,17 @@ if __name__ == "__main__":
         FINAL_EPSILON = 0.0001  # final value of epsilon
         INITIAL_EPSILON = 0.1  # starting value of epsilon
         FRAME_PER_ACTION = 1
-        speedup_level = 2
+        FPS = -1
+        show_play = False
+
     elif args.task == 'deploy':
         OBSERVE = 3000000.  # timesteps to observe before training
         FINAL_EPSILON = 0.0001  # final value of epsilon
         INITIAL_EPSILON = 0.0001  # starting value of epsilon
         # INITIAL_EPSILON = 0.03  # starting value of epsilon
         FRAME_PER_ACTION = 1
-        speedup_level = 1
+        FPS = -1
+        show_play = True
     else:
         raise ValueError('task can only be train or deploy')
 
@@ -323,9 +329,11 @@ if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    save_dir = 'saved_networks_no_fps_clock_v3'
+    save_dir = 'saved_networks_fixed_target'
     summaries_dir = './summaries'
     game_level = 'hard'
+
+    fix_target = True
     # create a glboal step variable
     # NB. this should be done before creating the q_estimator!
     tf.train.create_global_step()
@@ -337,4 +345,4 @@ if __name__ == "__main__":
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         train_dqn(sess, q_estimator, target_q_estimator,
-                     save_dir=save_dir, game_level=game_level, speedup_level=speedup_level)
+                  save_dir=save_dir, game_level=game_level, show_play=show_play, FPS=FPS, fix_target=fix_target)
