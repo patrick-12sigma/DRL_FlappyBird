@@ -148,7 +148,7 @@ def copy_model_parameters(sess, q_estimator, target_q_estimator):
 
     assign_ops = []
     for t, target_t in zip(params, target_params):
-        assign_op = tf.assign(t, value=target_t)
+        assign_op = tf.assign(ref=target_t, value=t) # update ref with value
         assign_ops.append(assign_op)
     sess.run(assign_ops)
 
@@ -323,14 +323,12 @@ if __name__ == "__main__":
         FRAME_PER_ACTION = 1
         FPS = -1
         show_play = False
-
     elif args.task == 'deploy':
         OBSERVE = 3000000.  # timesteps to observe before training
         FINAL_EPSILON = 0.0001  # final value of epsilon
         INITIAL_EPSILON = 0.0001  # starting value of epsilon
-        # INITIAL_EPSILON = 0.03  # starting value of epsilon
         FRAME_PER_ACTION = 1
-        FPS = -1
+        FPS = 30
         show_play = True
     else:
         raise ValueError('task can only be train or deploy')
@@ -339,8 +337,8 @@ if __name__ == "__main__":
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
-    fix_target = False
-    experiment_name = 'no_fixed_target'
+    fix_target = True
+    experiment_name = 'fixed_target_v2'
     model_dir, log_dir = maybe_make_model_log_dirs(experiment_name=experiment_name)
 
     # create a glboal step variable
