@@ -160,7 +160,7 @@ def preprocess_state(x_t):
 
 
 def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', show_play=True, FPS=30, model_dir=None,
-              fix_target=True):
+              fix_target=True, pretrained_model_dir=None):
     """Train
 
     Args:
@@ -170,6 +170,8 @@ def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', show_pla
         game_level:
         speedup_level:
         model_dir:
+        pretrained_model_dir
+        fix_target:
 
     Returns:
 
@@ -188,8 +190,10 @@ def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', show_pla
     s_t = np.stack([x_t] * 4, axis=2)
 
     # save and load networks
+    if pretrained_model_dir is None:
+        pretrained_model_dir = model_dir
     saver = tf.train.Saver(max_to_keep=None) # save all checkpoints
-    checkpoint = tf.train.get_checkpoint_state(model_dir)
+    checkpoint = tf.train.get_checkpoint_state(pretrained_model_dir)
     if checkpoint and checkpoint.model_checkpoint_path:
         saver.restore(sess, checkpoint.model_checkpoint_path)
         print("Successfully loaded:", checkpoint.model_checkpoint_path)
@@ -307,7 +311,7 @@ if __name__ == "__main__":
 
     # set global constants
     game_level = 'hard'
-    UPDATE_TARGET_ESTIMATOR_EVERY = 10000
+    UPDATE_TARGET_ESTIMATOR_EVERY = 1000
     SAVE_MODEL_EVERY = 10000
     REPLAY_MEMORY = 50000  # number of previous transitions to remember
     GAME = 'bird'  # the name of the game being played for log files
@@ -315,11 +319,11 @@ if __name__ == "__main__":
     BATCH = 32  # size of minibatch
     GAMMA = 0.99  # decay rate of past observations
     MAXITER = 3000000 # max number of frames to train/play
-    EXPLORE = 2000000 # number of episodes to perform epsilon decay
+    EXPLORE = 100000 # number of episodes to perform epsilon decay
     if args.task == 'train':
         OBSERVE = 10000.  # timesteps to observe before training
         FINAL_EPSILON = 0.0001  # final value of epsilon
-        INITIAL_EPSILON = 0.1  # starting value of epsilon
+        INITIAL_EPSILON = 1  # starting value of epsilon
         FRAME_PER_ACTION = 1
         FPS = -1
         show_play = False
@@ -338,8 +342,9 @@ if __name__ == "__main__":
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
 
     fix_target = True
-    experiment_name = 'fixed_target_v2'
+    experiment_name = 'fixed_target_v8'
     model_dir, log_dir = maybe_make_model_log_dirs(experiment_name=experiment_name)
+    pretrained_model_dir = None
 
     # create a glboal step variable
     # NB. this should be done before creating the q_estimator!
@@ -351,4 +356,5 @@ if __name__ == "__main__":
     with tf.Session() as sess:
         sess.run(tf.global_variables_initializer())
         train_dqn(sess, q_estimator, target_q_estimator,
-                  model_dir=model_dir, game_level=game_level, show_play=show_play, FPS=FPS, fix_target=fix_target)
+                  model_dir=model_dir, game_level=game_level, show_play=show_play, FPS=FPS, fix_target=fix_target,
+                  pretrained_model_dir=pretrained_model_dir)
