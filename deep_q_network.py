@@ -7,6 +7,8 @@ import game.wrapped_flappy_bird as game
 import random
 import numpy as np
 from collections import deque
+import time
+import pygame
 
 
 def maybe_make_model_log_dirs(experiment_name=""):
@@ -302,10 +304,42 @@ def train_dqn(sess, q_estimator, target_q_estimator, game_level='hard', show_pla
             t, epsilon, action_index, r_t, np.max(q_values_t)))
 
 
+def play_by_human():
+    """For human to play the game to try feel the game's difficulty
+
+    Space key to fly, do nothing to fall down
+
+    Returns:
+
+
+    """
+    game_state = game.GameState()
+    game_state.acceleration = False
+    game_1 = True
+    score = 0
+
+    start_time = time.time()
+    while game_1:
+        a_t = np.zeros([2])
+        keystate = pygame.key.get_pressed()
+        if keystate[pygame.K_SPACE]:
+            a_t = np.array([0, 1])
+        else:
+            a_t = np.array([1, 0])
+        x_t1_colored, r_t, terminal = game_state.frame_step(a_t)
+        score += r_t
+        # if time.time() - start_time > 10:
+        #     print('current score:', score)
+        if terminal:
+            print('total score:', score)
+            # print('time:',time.time()-start)
+            # game_1 = False
+
+#
 if __name__ == "__main__":
     # parse command line args
     parser = argparse.ArgumentParser()
-    parser.add_argument('--task', default='deploy', type=str, help='train or deploy')
+    parser.add_argument('--task', default='deploy', type=str, help='train or deploy or play')
     parser.add_argument('--gpu', default='1', type=str, metavar='N', help='use gpu')
     args = parser.parse_args()
 
@@ -334,6 +368,8 @@ if __name__ == "__main__":
         FRAME_PER_ACTION = 1
         FPS = 30
         show_play = True
+    elif args.task == 'play':
+        play_by_human()
     else:
         raise ValueError('task can only be train or deploy')
 
